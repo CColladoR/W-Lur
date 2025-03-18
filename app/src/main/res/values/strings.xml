@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">W-Lur</string>
+    <string name="onboarding_help_text">Welcome to Wlur!  To get started, select an image from your gallery.</string>
+    <string name="select_image_button">Select Image</string>
+    <string name="permission_dialog_title">Permission Required</string>
+    <string name="permission_dialog_message">This app needs permission to access your gallery to select an image.</string>
+    <string name="permission_dialog_ok">OK</string>
+    <string name="permission_dialog_cancel">Cancel</string>
+</resources>
