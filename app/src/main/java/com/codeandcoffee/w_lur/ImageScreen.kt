@@ -43,10 +43,8 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.util.lerp
-import kotlin.math.pow
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -58,7 +56,7 @@ fun ImageScreen(
 ) {
     var sliderValue by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
-    val blurRadius = with(density) { sliderValue * 20.dp.toPx() } // Ajusta este factor según sea necesario
+    val blurRadiusDp = with(density) { sliderValue * 15.dp.toPx() } // Ajusta este factor
     val context = LocalContext.current
 
     Log.d("ImageScreen", "URI recibida en ImageScreen: $imageUri")
@@ -77,13 +75,12 @@ fun ImageScreen(
 
     var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var blurredBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var displayedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var displayedBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(painter.state) {
         if (painter.state is AsyncImagePainter.State.Success) {
-            val loadedBitmap = (painter.state as AsyncImagePainter.State.Success).result.drawable.toBitmap()
-            originalBitmap = loadedBitmap
-            displayedBitmap = loadedBitmap
+            originalBitmap = (painter.state as AsyncImagePainter.State.Success).result.drawable.toBitmap()
+            displayedBitmap = originalBitmap?.asImageBitmap()
             Log.d("ImageScreen", "Imagen original cargada: $originalBitmap")
         } else if (painter.state is AsyncImagePainter.State.Error) {
             Log.e("ImageScreen", "Error al cargar la imagen con Coil")
@@ -98,33 +95,28 @@ fun ImageScreen(
         }
     }
 
-    LaunchedEffect(sliderValue) {
-        Log.d("ImageScreen", "Blur LaunchedEffect - sliderValue: $sliderValue")
-        Log.d("ImageScreen", "originalBitmap value: $originalBitmap")
+    LaunchedEffect(sliderValue, originalBitmap) {
         if (originalBitmap != null) {
-            val radius = blurRadius.roundToInt()
-            Log.d("ImageScreen", "Blur radius calculado: $radius")
+            val radius = blurRadiusDp.roundToInt()
+            Log.d("ImageScreen", "Blur LaunchedEffect - sliderValue: $sliderValue, radius: $radius")
             if (radius > 0) {
-                Log.d("ImageScreen", "Blur radius is greater than 0, applying blur")
                 withContext(Dispatchers.Default) {
-                    Log.d("ImageScreen", "Inside withContext for blurring")
-                    val scaledWidth = (originalBitmap!!.width * (1f - sliderValue)).toInt().coerceAtLeast(1)
-                    val scaledHeight = (originalBitmap!!.height * (1f - sliderValue)).toInt().coerceAtLeast(1)
-
-                    if (scaledWidth > 0 && scaledHeight > 0) {
-                        val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap!!, scaledWidth, scaledHeight, false)
-                        displayedBitmap = Bitmap.createScaledBitmap(scaledBitmap, originalBitmap!!.width, originalBitmap!!.height, false)
-                        Log.d("ImageScreen", "Desenfoque aplicado, displayedBitmap actualizado")
-                    } else {
-                        displayedBitmap = originalBitmap
-                        Log.d("ImageScreen", "Radio de desenfoque máximo, mostrando imagen muy reducida")
+                    try {
+                        val bitmapToBlur = originalBitmap!!.copy(Bitmap.Config.ARGB_8888, true)
+                        val blurred = horizontalBlur(bitmapToBlur, radius)
+                        val verticallyBlurred = verticalBlur(blurred, radius)
+                        blurredBitmap = verticallyBlurred
+                        displayedBitmap = verticallyBlurred?.asImageBitmap()
+                        Log.d("ImageScreen", "Desenfoque aplicado con Two-Pass Box Blur")
+                    } catch (e: Exception) {
+                        Log.e("ImageScreen", "Error applying Two-Pass Box Blur", e)
+                        displayedBitmap = originalBitmap?.asImageBitmap()
                     }
-                    blurredBitmap = displayedBitmap // Actualiza blurredBitmap también
                 }
             } else {
-                displayedBitmap = originalBitmap
+                displayedBitmap = originalBitmap?.asImageBitmap()
                 blurredBitmap = null
-                Log.d("ImageScreen", "Blur radius is 0, mostrando imagen original")
+                Log.d("ImageScreen", "Radio de desenfoque es 0, mostrando imagen original")
             }
         }
     }
@@ -141,7 +133,7 @@ fun ImageScreen(
         if (imageUri != null) {
             displayedBitmap?.let { bitmap ->
                 Image(
-                    bitmap = bitmap.asImageBitmap(),
+                    bitmap = bitmap,
                     contentDescription = "Selected Image",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -177,7 +169,7 @@ fun ImageScreen(
                 onClick = {
                     if (permissionState.status.isGranted) {
                         displayedBitmap?.let { btm ->
-                            viewModel.saveImage(btm) {
+                            viewModel.saveImage(btm.asAndroidBitmap()) {
                                 navController.popBackStack()
                             }
                         }
@@ -215,4 +207,88 @@ fun ImageScreen(
             )
         }
     }
+}
+
+private fun horizontalBlur(bitmap: Bitmap, radius: Int): Bitmap {
+    if (radius <= 0) return bitmap
+
+    val width = bitmap.width
+    val height = bitmap.height
+    val pixels = IntArray(width * height)
+    bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+    val resultPixels = pixels.copyOf()
+
+    for (y in 0 until height) {
+        for (x in 0 until width) {
+            var rSum = 0
+            var gSum = 0
+            var bSum = 0
+            var count = 0
+
+            for (i in -radius..radius) {
+                val xPos = x + i
+                if (xPos in 0 until width) {
+                    val index = y * width + xPos
+                    val pixel = pixels[index]
+                    rSum += (pixel shr 16) and 0xFF
+                    gSum += (pixel shr 8) and 0xFF
+                    bSum += pixel and 0xFF
+                    count++
+                }
+            }
+
+            val avgR = rSum / count
+            val avgG = gSum / count
+            val avgB = bSum / count
+
+            resultPixels[y * width + x] = (avgR shl 16) or (avgG shl 8) or avgB or (0xFF shl 24)
+        }
+    }
+
+    val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    resultBitmap.setPixels(resultPixels, 0, width, 0, 0, width, height)
+    return resultBitmap
+}
+
+private fun verticalBlur(bitmap: Bitmap, radius: Int): Bitmap {
+    if (radius <= 0) return bitmap
+
+    val width = bitmap.width
+    val height = bitmap.height
+    val pixels = IntArray(width * height)
+    bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+    val resultPixels = pixels.copyOf()
+
+    for (x in 0 until width) {
+        for (y in 0 until height) {
+            var rSum = 0
+            var gSum = 0
+            var bSum = 0
+            var count = 0
+
+            for (j in -radius..radius) {
+                val yPos = y + j
+                if (yPos in 0 until height) {
+                    val index = yPos * width + x
+                    val pixel = pixels[index]
+                    rSum += (pixel shr 16) and 0xFF
+                    gSum += (pixel shr 8) and 0xFF
+                    bSum += pixel and 0xFF
+                    count++
+                }
+            }
+
+            val avgR = rSum / count
+            val avgG = gSum / count
+            val avgB = bSum / count
+
+            resultPixels[y * width + x] = (avgR shl 16) or (avgG shl 8) or avgB or (0xFF shl 24)
+        }
+    }
+
+    val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    resultBitmap.setPixels(resultPixels, 0, width, 0, 0, width, height)
+    return resultBitmap
 }
