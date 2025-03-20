@@ -14,7 +14,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -56,14 +55,21 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(platform("androidx.compose:compose-bom:2023.10.01"))
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation(platform(libs.androidx.compose.bom.v20231001))
+    implementation(libs.androidx.navigation.compose)
     // Coil (para cargar imágenes en el futuro)
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation(libs.coil.compose)
+    implementation(libs.androidx.graphics.core) // O la versión más reciente
+
     // Permisos
-    implementation("com.google.accompanist:accompanist-permissions:0.32.0") // Usa Accompanist
-    implementation("androidx.compose.ui:ui:1.5.3") // Usa la versión correcta
-    implementation("androidx.compose.ui:ui-graphics:1.5.3") // Importante para Brush
+    implementation(libs.accompanist.permissions) // Usa Accompanist
+    implementation(libs.ui) // Usa la versión correcta
+    implementation(libs.ui.graphics) // Importante para Brush
+    implementation(libs.androidx.ui.v164) // Asegúrate de tener la versión más reciente de Compose
+    implementation(libs.material3) // Asegúrate de tener la versión más reciente de Material 3
+    implementation(libs.androidx.core.ktx.v1120) // Asegúrate de tener la versión más reciente de core-ktx
+    implementation(libs.androidx.lifecycle.runtime.ktx.v270) // Asegúrate de tener la versión más reciente de lifecycle-runtime-ktx
+    implementation(libs.androidx.activity.compose.v182) // Asegúrate de tener la versión más reciente de activity-compose
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

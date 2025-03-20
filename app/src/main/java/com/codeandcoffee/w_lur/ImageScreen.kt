@@ -2,9 +2,6 @@ package com.codeandcoffee.w_lur
 
 import android.Manifest
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -29,12 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.applyCanvas
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -48,6 +43,11 @@ import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.util.lerp
+import kotlin.math.pow
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -58,83 +58,77 @@ fun ImageScreen(
 ) {
     var sliderValue by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
-    val blurRadius = with(density) { sliderValue * 32.dp.toPx() }
-
+    val blurRadius = with(density) { sliderValue * 20.dp.toPx() } // Ajusta este factor según sea necesario
     val context = LocalContext.current
 
-    Log.d("ImageScreen", "URI recibida en ImageScreen: $imageUri") // Añade este log
+    Log.d("ImageScreen", "URI recibida en ImageScreen: $imageUri")
 
     val request = ImageRequest.Builder(context)
         .data(imageUri)
         .size(Size.ORIGINAL)
         .listener(
-            onStart = {
-                Log.d("ImageScreen", "Iniciando carga de imagen con Coil")
-            },
-            onSuccess = { request, result ->
-                Log.d("ImageScreen", "Imagen cargada con éxito: ${result.drawable}")
-            },
-            onError = { request, throwable ->
-                Log.e("ImageScreen", "Error cargando imagen con Coil", throwable)
-            }
+            onStart = { Log.d("ImageScreen", "Iniciando carga de imagen con Coil") },
+            onSuccess = { _, _ -> Log.d("ImageScreen", "Imagen cargada con éxito") },
+            onError = { _, result -> Log.e("ImageScreen", "Error cargando imagen con Coil", result.throwable) }
         )
         .build()
 
+    val painter = rememberAsyncImagePainter(model = request)
 
-    // Cargar la imagen original (usando Coil)
-    val painter = rememberAsyncImagePainter(
-        model = request
-    )
-
-    // ... (resto del código antes del LaunchedEffect) ...
     var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var blurredBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var displayedBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
-    // LaunchedEffect para cargar el bitmap original y aplicar desenfoque
-    LaunchedEffect(sliderValue, painter.state) {
-        when (painter.state) {
-            is AsyncImagePainter.State.Loading -> {
-                // Opcional: Mostrar un indicador de carga mientras se carga la imagen original.
-                // No es estrictamente necesario para este ejemplo simplificado.
-                Log.d("ImageScreen", "Cargando imagen...")
-                originalBitmap = null // Importante resetear
-                blurredBitmap = null
-            }
-            is coil.request.SuccessResult -> {
-                Log.d("ImageScreen", "Imagen cargada correctamente")
-                val loadedBitmap = (painter.state as coil.request.SuccessResult).drawable.toBitmap()
-                originalBitmap = loadedBitmap
+    LaunchedEffect(painter.state) {
+        if (painter.state is AsyncImagePainter.State.Success) {
+            val loadedBitmap = (painter.state as AsyncImagePainter.State.Success).result.drawable.toBitmap()
+            originalBitmap = loadedBitmap
+            displayedBitmap = loadedBitmap
+            Log.d("ImageScreen", "Imagen original cargada: $originalBitmap")
+        } else if (painter.state is AsyncImagePainter.State.Error) {
+            Log.e("ImageScreen", "Error al cargar la imagen con Coil")
+            originalBitmap = null
+            blurredBitmap = null
+            displayedBitmap = null
+        } else if (painter.state is AsyncImagePainter.State.Loading) {
+            Log.d("ImageScreen", "Cargando imagen...")
+            originalBitmap = null
+            blurredBitmap = null
+            displayedBitmap = null
+        }
+    }
 
+    LaunchedEffect(sliderValue) {
+        Log.d("ImageScreen", "Blur LaunchedEffect - sliderValue: $sliderValue")
+        Log.d("ImageScreen", "originalBitmap value: $originalBitmap")
+        if (originalBitmap != null) {
+            val radius = blurRadius.roundToInt()
+            Log.d("ImageScreen", "Blur radius calculado: $radius")
+            if (radius > 0) {
+                Log.d("ImageScreen", "Blur radius is greater than 0, applying blur")
                 withContext(Dispatchers.Default) {
-                    val currentBitmap = originalBitmap // Usar variable local
-                    if (currentBitmap != null) {
-                        val newBlurredBitmap =
-                            currentBitmap.copy(currentBitmap.config ?: Bitmap.Config.ARGB_8888, true)
-                                .apply {
-                                    val radius = blurRadius.toInt()
-                                    if (radius > 0) {
-                                        blurBitmap(this, radius)
-                                    }
-                                }
-                        blurredBitmap = newBlurredBitmap
+                    Log.d("ImageScreen", "Inside withContext for blurring")
+                    val scaledWidth = (originalBitmap!!.width * (1f - sliderValue)).toInt().coerceAtLeast(1)
+                    val scaledHeight = (originalBitmap!!.height * (1f - sliderValue)).toInt().coerceAtLeast(1)
+
+                    if (scaledWidth > 0 && scaledHeight > 0) {
+                        val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap!!, scaledWidth, scaledHeight, false)
+                        displayedBitmap = Bitmap.createScaledBitmap(scaledBitmap, originalBitmap!!.width, originalBitmap!!.height, false)
+                        Log.d("ImageScreen", "Desenfoque aplicado, displayedBitmap actualizado")
+                    } else {
+                        displayedBitmap = originalBitmap
+                        Log.d("ImageScreen", "Radio de desenfoque máximo, mostrando imagen muy reducida")
                     }
+                    blurredBitmap = displayedBitmap // Actualiza blurredBitmap también
                 }
-            }
-            is coil.request.ErrorResult -> {
-                // ¡MUY IMPORTANTE! Mostrar un error si Coil falla
-                Log.e("ImageScreen", "Error al cargar la imagen con Coil: ${(painter.state as coil.request.ErrorResult).throwable}")
-                originalBitmap = null //Asegurarse
+            } else {
+                displayedBitmap = originalBitmap
                 blurredBitmap = null
-            }
-            else -> {
-                Log.d("ImageScreen", "Estado del painter: ${painter.state}") // Añadido para depuración
-                originalBitmap = null //Asegurarse
-                blurredBitmap = null
+                Log.d("ImageScreen", "Blur radius is 0, mostrando imagen original")
             }
         }
     }
 
-    // --- Permisos para guardar la imagen ---
     val savePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         Manifest.permission.READ_MEDIA_IMAGES
     } else {
@@ -143,9 +137,8 @@ fun ImageScreen(
     val permissionState = rememberPermissionState(savePermission)
     var showPermissionRationaleDialog by remember { mutableStateOf(false) }
 
-   Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         if (imageUri != null) {
-            // Mostrar la imagen (usa el currentBitmap)
             displayedBitmap?.let { bitmap ->
                 Image(
                     bitmap = bitmap.asImageBitmap(),
@@ -153,8 +146,7 @@ fun ImageScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-            } ?: Text("Cargando imagen...", modifier = Modifier.align(Alignment.Center)) // Mensaje de carga
-
+            } ?: Text("Cargando imagen...", modifier = Modifier.align(Alignment.Center))
         } else {
             Text("Error: No image selected", color = Color.Red)
         }
@@ -167,7 +159,10 @@ fun ImageScreen(
         ) {
             SquigglySlider(
                 value = sliderValue,
-                onValueChange = { newValue -> sliderValue = newValue },
+                onValueChange = { newValue ->
+                    sliderValue = newValue
+                    Log.d("ImageScreen", "Valor del slider cambiado a: $newValue")
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
@@ -181,7 +176,6 @@ fun ImageScreen(
             Button(
                 onClick = {
                     if (permissionState.status.isGranted) {
-                        // Usa currentBitmap, que ya tiene el desenfoque aplicado
                         displayedBitmap?.let { btm ->
                             viewModel.saveImage(btm) {
                                 navController.popBackStack()
@@ -200,7 +194,6 @@ fun ImageScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Diálogo de explicación de permisos (si es necesario)
         if (showPermissionRationaleDialog) {
             AlertDialog(
                 onDismissRequest = { showPermissionRationaleDialog = false },
@@ -221,33 +214,5 @@ fun ImageScreen(
                 }
             )
         }
-    }
-}
-
-
-// Función de utilidad para el desenfoque (PRIVADA)
-private fun blurBitmap(bitmap: Bitmap, radius: Int) {
-    val scaledWidth = bitmap.width / 8
-    val scaledHeight = bitmap.height / 8
-    val scaledBitmap = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, false)
-
-    val canvas = Canvas(scaledBitmap)
-    canvas.drawColor(Color.Transparent.copy(alpha = 0.1f).toArgb())
-
-    val paint = Paint()
-    paint.isAntiAlias = true
-
-    val colorMatrix = android.graphics.ColorMatrix().apply {
-        val alpha = 0.5f + (radius / 32f) * 0.5f
-        setScale(1f, 1f, 1f, alpha.coerceIn(0f, 1f))
-    }
-    paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
-
-    for (i in 0 until radius) {
-        canvas.drawBitmap(scaledBitmap, 0f, 0f, paint)
-    }
-    val finalBitmap = Bitmap.createScaledBitmap(scaledBitmap, bitmap.width, bitmap.height, false)
-    bitmap.applyCanvas { //Se aplica el canvas sobre el bitmap original.
-        drawBitmap(finalBitmap, 0f, 0f, null)
     }
 }
