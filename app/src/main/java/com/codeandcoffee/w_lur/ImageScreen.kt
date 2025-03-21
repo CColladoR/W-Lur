@@ -2,6 +2,7 @@ package com.codeandcoffee.w_lur
 
 import android.Manifest
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -24,28 +25,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
-import coil.size.Size
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -56,68 +50,34 @@ fun ImageScreen(
 ) {
     var sliderValue by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
-    val blurRadiusDp = with(density) { sliderValue * 15.dp.toPx() } // Ajusta este factor
+    val blurRadiusPx = with(density) { sliderValue * 50.dp.toPx() }
+
     val context = LocalContext.current
+    val contentResolver = context.contentResolver
 
     Log.d("ImageScreen", "URI recibida en ImageScreen: $imageUri")
 
-    val request = ImageRequest.Builder(context)
-        .data(imageUri)
-        .size(Size.ORIGINAL)
-        .listener(
-            onStart = { Log.d("ImageScreen", "Iniciando carga de imagen con Coil") },
-            onSuccess = { _, _ -> Log.d("ImageScreen", "Imagen cargada con éxito") },
-            onError = { _, result -> Log.e("ImageScreen", "Error cargando imagen con Coil", result.throwable) }
-        )
-        .build()
+    var displayedBitmap by remember(imageUri) { mutableStateOf<Bitmap?>(null) }
+    var loadAttempted by remember { mutableStateOf(false) }
 
-    val painter = rememberAsyncImagePainter(model = request)
-
-    var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var blurredBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var displayedBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-
-    LaunchedEffect(painter.state) {
-        if (painter.state is AsyncImagePainter.State.Success) {
-            originalBitmap = (painter.state as AsyncImagePainter.State.Success).result.drawable.toBitmap()
-            displayedBitmap = originalBitmap?.asImageBitmap()
-            Log.d("ImageScreen", "Imagen original cargada: $originalBitmap")
-        } else if (painter.state is AsyncImagePainter.State.Error) {
-            Log.e("ImageScreen", "Error al cargar la imagen con Coil")
-            originalBitmap = null
-            blurredBitmap = null
-            displayedBitmap = null
-        } else if (painter.state is AsyncImagePainter.State.Loading) {
-            Log.d("ImageScreen", "Cargando imagen...")
-            originalBitmap = null
-            blurredBitmap = null
-            displayedBitmap = null
-        }
-    }
-
-    LaunchedEffect(sliderValue, originalBitmap) {
-        if (originalBitmap != null) {
-            val radius = blurRadiusDp.roundToInt()
-            Log.d("ImageScreen", "Blur LaunchedEffect - sliderValue: $sliderValue, radius: $radius")
-            if (radius > 0) {
-                withContext(Dispatchers.Default) {
-                    try {
-                        val bitmapToBlur = originalBitmap!!.copy(Bitmap.Config.ARGB_8888, true)
-                        val blurred = horizontalBlur(bitmapToBlur, radius)
-                        val verticallyBlurred = verticalBlur(blurred, radius)
-                        blurredBitmap = verticallyBlurred
-                        displayedBitmap = verticallyBlurred?.asImageBitmap()
-                        Log.d("ImageScreen", "Desenfoque aplicado con Two-Pass Box Blur")
-                    } catch (e: Exception) {
-                        Log.e("ImageScreen", "Error applying Two-Pass Box Blur", e)
-                        displayedBitmap = originalBitmap?.asImageBitmap()
-                    }
+    LaunchedEffect(imageUri) {
+        if (imageUri != null && !loadAttempted) {
+            loadAttempted = true
+            Log.d("ImageScreen", "LaunchedEffect - Intentando cargar Bitmap directamente desde URI")
+            withContext(Dispatchers.IO) {
+                try {
+                    val inputStream = contentResolver.openInputStream(imageUri)
+                    displayedBitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    Log.d("ImageScreen", "LaunchedEffect - Bitmap cargado con éxito desde URI")
+                } catch (e: Exception) {
+                    Log.e("ImageScreen", "LaunchedEffect - Error al cargar Bitmap desde URI", e)
+                    displayedBitmap = null
                 }
-            } else {
-                displayedBitmap = originalBitmap?.asImageBitmap()
-                blurredBitmap = null
-                Log.d("ImageScreen", "Radio de desenfoque es 0, mostrando imagen original")
             }
+        } else if (imageUri == null) {
+            displayedBitmap = null
+            loadAttempted = false
         }
     }
 
@@ -130,12 +90,22 @@ fun ImageScreen(
     var showPermissionRationaleDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        Log.d("ImageScreen", "Box - displayedBitmap: $displayedBitmap")
         if (imageUri != null) {
             displayedBitmap?.let { bitmap ->
+                Log.d("ImageScreen", "displayedBitmap?.let - bitmap no es nulo")
+                val modifier = Modifier.fillMaxSize()
+                val blurRadius = blurRadiusPx.dp
+
+                val imageModifier = if (sliderValue > 0f) {
+                    modifier.blur(radius = blurRadius)
+                } else {
+                    modifier
+                }
                 Image(
-                    bitmap = bitmap,
+                    bitmap = bitmap.asImageBitmap(),
                     contentDescription = "Selected Image",
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = imageModifier,
                     contentScale = ContentScale.Crop
                 )
             } ?: Text("Cargando imagen...", modifier = Modifier.align(Alignment.Center))
@@ -151,10 +121,7 @@ fun ImageScreen(
         ) {
             SquigglySlider(
                 value = sliderValue,
-                onValueChange = { newValue ->
-                    sliderValue = newValue
-                    Log.d("ImageScreen", "Valor del slider cambiado a: $newValue")
-                },
+                onValueChange = { newValue -> sliderValue = newValue },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
@@ -168,10 +135,8 @@ fun ImageScreen(
             Button(
                 onClick = {
                     if (permissionState.status.isGranted) {
-                        displayedBitmap?.let { btm ->
-                            viewModel.saveImage(btm.asAndroidBitmap()) {
-                                navController.popBackStack()
-                            }
+                        viewModel.saveBlurredImage(imageUri, blurRadiusPx) {
+                            navController.popBackStack()
                         }
                     } else if (permissionState.status.shouldShowRationale) {
                         showPermissionRationaleDialog = true
@@ -207,88 +172,4 @@ fun ImageScreen(
             )
         }
     }
-}
-
-private fun horizontalBlur(bitmap: Bitmap, radius: Int): Bitmap {
-    if (radius <= 0) return bitmap
-
-    val width = bitmap.width
-    val height = bitmap.height
-    val pixels = IntArray(width * height)
-    bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-    val resultPixels = pixels.copyOf()
-
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            var rSum = 0
-            var gSum = 0
-            var bSum = 0
-            var count = 0
-
-            for (i in -radius..radius) {
-                val xPos = x + i
-                if (xPos in 0 until width) {
-                    val index = y * width + xPos
-                    val pixel = pixels[index]
-                    rSum += (pixel shr 16) and 0xFF
-                    gSum += (pixel shr 8) and 0xFF
-                    bSum += pixel and 0xFF
-                    count++
-                }
-            }
-
-            val avgR = rSum / count
-            val avgG = gSum / count
-            val avgB = bSum / count
-
-            resultPixels[y * width + x] = (avgR shl 16) or (avgG shl 8) or avgB or (0xFF shl 24)
-        }
-    }
-
-    val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    resultBitmap.setPixels(resultPixels, 0, width, 0, 0, width, height)
-    return resultBitmap
-}
-
-private fun verticalBlur(bitmap: Bitmap, radius: Int): Bitmap {
-    if (radius <= 0) return bitmap
-
-    val width = bitmap.width
-    val height = bitmap.height
-    val pixels = IntArray(width * height)
-    bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-    val resultPixels = pixels.copyOf()
-
-    for (x in 0 until width) {
-        for (y in 0 until height) {
-            var rSum = 0
-            var gSum = 0
-            var bSum = 0
-            var count = 0
-
-            for (j in -radius..radius) {
-                val yPos = y + j
-                if (yPos in 0 until height) {
-                    val index = yPos * width + x
-                    val pixel = pixels[index]
-                    rSum += (pixel shr 16) and 0xFF
-                    gSum += (pixel shr 8) and 0xFF
-                    bSum += pixel and 0xFF
-                    count++
-                }
-            }
-
-            val avgR = rSum / count
-            val avgG = gSum / count
-            val avgB = bSum / count
-
-            resultPixels[y * width + x] = (avgR shl 16) or (avgG shl 8) or avgB or (0xFF shl 24)
-        }
-    }
-
-    val resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    resultBitmap.setPixels(resultPixels, 0, width, 0, 0, width, height)
-    return resultBitmap
 }

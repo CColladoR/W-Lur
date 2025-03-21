@@ -2,6 +2,7 @@
 accompanistPermissions = "0.32.0"
 activityComposeVersion = "1.8.2"
 agp = "8.9.0"
+androidxUiGraphics = "..."
 coilCompose = "2.6.0"
 composeBomVersion = "2023.10.01"
 coreKtxVersion = "1.12.0"
@@ -30,6 +31,7 @@ androidx-core-ktx-v1120 = { module = "androidx.core:core-ktx", version.ref = "co
 androidx-graphics-core = { module = "androidx.graphics:graphics-core", version.ref = "graphicsCore" }
 androidx-lifecycle-runtime-ktx-v270 = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtxVersion" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+androidx-ui-graphics-vx = { module = "androidx.compose.ui:ui-graphics", version.ref = "androidxUiGraphics" }
 androidx-ui-v164 = { module = "androidx.compose.ui:ui", version.ref = "uiVersion" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
