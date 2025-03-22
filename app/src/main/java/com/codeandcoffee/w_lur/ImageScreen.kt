@@ -50,7 +50,9 @@ fun ImageScreen(
 ) {
     var sliderValue by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
-    val blurRadiusPx = with(density) { sliderValue * 50.dp.toPx() }
+    // Mapear sliderValue (0f a 1f) a un rango de 0dp a 10dp
+    val blurRadiusDp = sliderValue * 50f // Valor en DP
+    val blurRadiusPx = with(density) { blurRadiusDp.dp.toPx() } // Convertir a PX solo para el ViewModel
 
     val context = LocalContext.current
     val contentResolver = context.contentResolver
@@ -95,7 +97,7 @@ fun ImageScreen(
             displayedBitmap?.let { bitmap ->
                 Log.d("ImageScreen", "displayedBitmap?.let - bitmap no es nulo")
                 val modifier = Modifier.fillMaxSize()
-                val blurRadius = blurRadiusPx.dp
+                val blurRadius = blurRadiusDp.dp // Usamos DP directamente para la previsualización
 
                 val imageModifier = if (sliderValue > 0f) {
                     modifier.blur(radius = blurRadius)
@@ -135,6 +137,7 @@ fun ImageScreen(
             Button(
                 onClick = {
                     if (permissionState.status.isGranted) {
+                        // Pasamos blurRadiusPx en píxeles al ViewModel
                         viewModel.saveBlurredImage(imageUri, blurRadiusPx) {
                             navController.popBackStack()
                         }

@@ -83,7 +83,7 @@ fun OnboardingScreen(onImageSelected: (Uri) -> Unit) { // Callback
 
 
     // ---  Animación del Gradiente (sin cambios) ---
-    val baseColor = Color(0xFFFD8057)
+    val baseColor = Color(0xff91bceb)
     val animatedColors = remember { generateColorScheme(baseColor, 6) }
     val infiniteTransition = rememberInfiniteTransition(label = "")
 

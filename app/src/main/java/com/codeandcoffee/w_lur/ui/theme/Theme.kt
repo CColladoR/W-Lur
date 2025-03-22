@@ -16,10 +16,10 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFBB86FC),
-    secondary = Color(0xFF03DAC5),
-    tertiary = Color(0xFF03DAC5),
-    background = Color(0xFF121212) // Fondo oscuro (casi negro)
+    primary = Color(0xffe1888c),
+    secondary = Color(0xff91bceb),
+    tertiary = Color(0xff91bceb),
+    background = Color(0xFFFFFFFF)
 )
 @Composable
 fun WLurTheme(

@@ -59,7 +59,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.graphics.core) // O la versión más reciente
     implementation("androidx.compose.ui:ui-graphics:1.7.8")
-
+    implementation("com.github.bumptech.glide:glide:4.16.0")
     // Permisos
     implementation(libs.accompanist.permissions)
 
