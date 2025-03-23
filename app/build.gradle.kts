@@ -60,6 +60,7 @@ dependencies {
     implementation(libs.androidx.graphics.core) // O la versión más reciente
     implementation("androidx.compose.ui:ui-graphics:1.7.8")
     implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.7.8")
     // Permisos
     implementation(libs.accompanist.permissions)
 

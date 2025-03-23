@@ -6,7 +6,12 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -16,16 +21,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -34,11 +46,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.codeandcoffee.w_lur.ui.theme.endGradient
+import com.codeandcoffee.w_lur.ui.theme.startGradient
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -46,21 +61,23 @@ import kotlinx.coroutines.withContext
 fun ImageScreen(
     imageUri: Uri?,
     navController: NavController,
-    viewModel: ImageViewModel = viewModel()
+    viewModel: ImageViewModel = viewModel(),
+    onImageSaved: () -> Unit
 ) {
     var sliderValue by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
-    // Mapear sliderValue (0f a 1f) a un rango de 0dp a 10dp
-    val blurRadiusDp = sliderValue * 50f // Valor en DP
-    val blurRadiusPx = with(density) { blurRadiusDp.dp.toPx() } // Convertir a PX solo para el ViewModel
+    val blurRadiusDp = sliderValue * 25f
+    val blurRadiusPx = with(density) { blurRadiusDp.dp.toPx() }
 
     val context = LocalContext.current
     val contentResolver = context.contentResolver
 
-    Log.d("ImageScreen", "URI recibida en ImageScreen: $imageUri")
-
     var displayedBitmap by remember(imageUri) { mutableStateOf<Bitmap?>(null) }
     var loadAttempted by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(imageUri) {
         if (imageUri != null && !loadAttempted) {
@@ -92,53 +109,78 @@ fun ImageScreen(
     var showPermissionRationaleDialog by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Log.d("ImageScreen", "Box - displayedBitmap: $displayedBitmap")
-        if (imageUri != null) {
-            displayedBitmap?.let { bitmap ->
-                Log.d("ImageScreen", "displayedBitmap?.let - bitmap no es nulo")
-                val modifier = Modifier.fillMaxSize()
-                val blurRadius = blurRadiusDp.dp // Usamos DP directamente para la previsualización
-
-                val imageModifier = if (sliderValue > 0f) {
-                    modifier.blur(radius = blurRadius)
+        displayedBitmap?.let { bitmap ->
+            val modifier = Modifier.fillMaxSize()
+            val blurRadius = blurRadiusDp.dp
+            val imageModifier = if (sliderValue > 0f) {
+                modifier.blur(radius = blurRadius)
+            } else {
+                modifier
+            }
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Selected Image",
+                modifier = imageModifier,
+                contentScale = ContentScale.Crop
+            )
+        } ?: run {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF121212)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (imageUri != null) {
+                    Text("Cargando imagen...", color = Color.White)
                 } else {
-                    modifier
+                    Text("Error: No image selected", color = Color.Red)
                 }
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Selected Image",
-                    modifier = imageModifier,
-                    contentScale = ContentScale.Crop
-                )
-            } ?: Text("Cargando imagen...", modifier = Modifier.align(Alignment.Center))
-        } else {
-            Text("Error: No image selected", color = Color.Red)
+            }
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.BottomCenter),
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            SquigglySlider(
-                value = sliderValue,
-                onValueChange = { newValue -> sliderValue = newValue },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                trackColor = Color.White,
-                activeTrackColor = Color.Cyan,
-                thumbColor = Color.White,
-            )
+            if (isSaving) {
+                SavingIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .padding(horizontal = 16.dp)
+                )
+            } else {
+                SquigglySlider(
+                    value = sliderValue,
+                    onValueChange = { newValue -> sliderValue = newValue },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .padding(horizontal = 16.dp),
+                    trackColor = Color.White,
+                    activeTrackColor = startGradient,
+                    thumbColor = Color.White,
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Button(
+            MinimalButton(
                 onClick = {
                     if (permissionState.status.isGranted) {
-                        // Pasamos blurRadiusPx en píxeles al ViewModel
+                        isSaving = true
                         viewModel.saveBlurredImage(imageUri, blurRadiusPx) {
+                            isSaving = false
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = "Image saved to your gallery",
+                                    duration = SnackbarDuration.Short
+                                )
+                            }
+                            onImageSaved()
                             navController.popBackStack()
                         }
                     } else if (permissionState.status.shouldShowRationale) {
@@ -147,11 +189,26 @@ fun ImageScreen(
                         permissionState.launchPermissionRequest()
                     }
                 },
-                modifier = Modifier.padding(bottom = 16.dp)
-            ) {
-                Text("Guardar imagen")
-            }
+                enabled = !isSaving,
+                text = "Save Image"
+            )
+
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+        ) { data ->
+            Snackbar(
+                modifier = Modifier.padding(16.dp),
+                containerColor = endGradient, // Color de fondo personalizado
+                contentColor = Color.White // Color del texto para contraste
+            ) {
+                Text(data.visuals.message)
+            }
         }
 
         if (showPermissionRationaleDialog) {
@@ -175,4 +232,26 @@ fun ImageScreen(
             )
         }
     }
+}
+
+@Composable
+fun SavingIndicator(modifier: Modifier = Modifier) {
+    val animation = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        animation.animateTo(
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1000, easing = { it }),
+                repeatMode = RepeatMode.Reverse
+            )
+        )
+    }
+
+    LinearProgressIndicator(
+        progress = { animation.value },
+        modifier = modifier.clipToBounds(),
+        color = endGradient,
+        trackColor = Color.White.copy(alpha = 0.3f),
+    )
 }

@@ -83,23 +83,34 @@ class ImageViewModel(application: Application) : AndroidViewModel(application) {
                 if (originalBitmap != null) {
                     Log.d("ImageViewModel", "Aplicando desenfoque de $blurRadiusPx px a la imagen")
 
+                    // Reducir la resolución a la mitad (ajustable según necesidades)
+                    val scaleFactor = 0.5f
+                    val scaledWidth = (originalBitmap.width * scaleFactor).toInt()
+                    val scaledHeight = (originalBitmap.height * scaleFactor).toInt()
+                    val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true)
+
                     val resultBitmap = if (blurRadiusPx > 0) {
                         try {
-                            applyBlur(originalBitmap, blurRadiusPx)
+                            // Ajustar el radio proporcionalmente al escalado
+                            val adjustedRadius = blurRadiusPx * scaleFactor
+                            applyBlur(scaledBitmap, adjustedRadius)
                         } catch (e: Exception) {
                             Log.e("ImageViewModel", "Error al aplicar desenfoque", e)
-                            originalBitmap
+                            scaledBitmap
                         }
                     } else {
-                        originalBitmap
+                        scaledBitmap
                     }
 
-                    saveBitmapToGallery(resultBitmap)
-                    if (resultBitmap != originalBitmap) {
-                        resultBitmap.recycle() // Liberar memoria
-                    }
+                    // Escalar de vuelta al tamaño original (opcional)
+                    val finalBitmap = Bitmap.createScaledBitmap(resultBitmap, originalBitmap.width, originalBitmap.height, true)
+
+                    saveBitmapToGallery(finalBitmap)
+                    if (resultBitmap != scaledBitmap) resultBitmap.recycle()
+                    if (finalBitmap != resultBitmap) finalBitmap.recycle()
+                    scaledBitmap.recycle()
                 }
-                originalBitmap?.recycle() // Liberar memoria
+                originalBitmap?.recycle()
             } catch (e: Exception) {
                 Log.e("ImageViewModel", "Error processing image for saving", e)
             } finally {

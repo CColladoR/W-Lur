@@ -32,6 +32,7 @@ androidx-graphics-core = { module = "androidx.graphics:graphics-core", version.r
 androidx-lifecycle-runtime-ktx-v270 = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtxVersion" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 androidx-ui-graphics-vx = { module = "androidx.compose.ui:ui-graphics", version.ref = "androidxUiGraphics" }
+androidx-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts" }
 androidx-ui-v164 = { module = "androidx.compose.ui:ui", version.ref = "uiVersion" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
