@@ -334,7 +334,7 @@ fun MinimalButton(
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = buttonColor,
-            contentColor = Color.White
+            contentColor = Color.Black
         ),
         elevation = ButtonDefaults.buttonElevation(
             defaultElevation = 2.dp,
